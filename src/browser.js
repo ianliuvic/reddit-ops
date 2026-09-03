@@ -80,6 +80,7 @@ export function createBrowserManager(config) {
         `--user-data-dir=${profilePath}`,
         '--no-first-run',
         '--no-default-browser-check',
+        '--no-sandbox',
         '--disable-dev-shm-usage',
         '--password-store=basic',
         '--window-size=1400,940',
