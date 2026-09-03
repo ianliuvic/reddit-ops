@@ -2,7 +2,10 @@ FROM mcr.microsoft.com/playwright:v1.55.1-noble
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-      dbus-x11 dumb-init fluxbox fonts-noto-cjk novnc websockify x11vnc xvfb \
+      ca-certificates dbus-x11 dumb-init fluxbox fonts-noto-cjk novnc wget websockify x11vnc xvfb \
+    && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome.deb \
+    && apt-get install -y --no-install-recommends /tmp/google-chrome.deb \
+    && rm -f /tmp/google-chrome.deb \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \

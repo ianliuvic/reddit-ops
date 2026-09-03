@@ -18,6 +18,7 @@ export function createBrowserManager(config) {
   const capturesPath = path.join(config.storagePath, 'captures');
   const storageStatePath = path.join(config.storagePath, 'storage-state.json');
   let context;
+  let browser;
   let children = [];
   let state = 'stopped';
   let lastError = null;
@@ -34,6 +35,19 @@ export function createBrowserManager(config) {
       if (message) process.stderr.write(`[${path.basename(command)}] ${message}\n`);
     });
     children.push(child);
+    return child;
+  }
+
+  async function waitForChrome(timeoutMs = 30000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${config.cdpPort}/json/version`);
+        if (response.ok) return;
+      } catch { /* Chrome is still starting */ }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error('Google Chrome did not expose its debugging endpoint in time');
   }
 
   async function saveState() {
@@ -60,13 +74,22 @@ export function createBrowserManager(config) {
       service('fluxbox', []);
       service('x11vnc', ['-display', config.display, '-rfbport', '5900', '-localhost', '-forever', '-shared', '-nopw']);
       service('websockify', ['--web=/usr/share/novnc', '127.0.0.1:6080', '127.0.0.1:5900']);
-      context = await chromium.launchPersistentContext(profilePath, {
-        headless: false,
-        locale: config.locale,
-        timezoneId: config.timezone,
-        viewport: { width: 1400, height: 940 },
-        args: ['--disable-dev-shm-usage', '--password-store=basic'],
-      });
+      service(config.chromePath, [
+        `--remote-debugging-port=${config.cdpPort}`,
+        '--remote-debugging-address=127.0.0.1',
+        `--user-data-dir=${profilePath}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-dev-shm-usage',
+        '--password-store=basic',
+        '--window-size=1400,940',
+        `--lang=${config.locale}`,
+        'about:blank',
+      ]);
+      await waitForChrome();
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${config.cdpPort}`);
+      context = browser.contexts()[0];
+      if (!context) throw new Error('Google Chrome did not provide a browser context');
       const page = context.pages()[0] ?? await context.newPage();
       page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
       if (!isAllowedNavigationUrl(page.url())) {
@@ -86,7 +109,8 @@ export function createBrowserManager(config) {
     clearInterval(stateTimer);
     stateTimer = undefined;
     await saveState().catch(() => {});
-    await context?.close().catch(() => {});
+    await browser?.close().catch(() => {});
+    browser = undefined;
     context = undefined;
     await Promise.all(children.reverse().map(terminate));
     children = [];
@@ -104,7 +128,14 @@ export function createBrowserManager(config) {
   return {
     start,
     stop,
-    status: () => ({ state, ready: state === 'running', lastError, startUrl: config.startUrl }),
+    status: () => ({
+      state,
+      ready: state === 'running',
+      lastError,
+      startUrl: config.startUrl,
+      browser: 'google-chrome-stable',
+      connection: 'cdp',
+    }),
     openLogin: () => run(async (page) => {
       await page.goto(config.startUrl, { waitUntil: 'domcontentloaded' });
       return { url: page.url(), title: await page.title(), ...(await loginStatus(page)) };
