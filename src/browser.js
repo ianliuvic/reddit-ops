@@ -105,7 +105,14 @@ export function createBrowserManager(config) {
     const hasSessionCookie = cookies.some((cookie) => ['reddit_session', 'token_v2'].includes(cookie.name) && cookie.value);
     const body = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
     const loginPromptVisible = /log in|sign up|continue with google/i.test(body.slice(0, 12000));
-    return { authenticated: hasSessionCookie && !loginPromptVisible, hasSessionCookie, loginPromptVisible };
+    let onLoginRoute = false;
+    try { onLoginRoute = new URL(page.url()).pathname.startsWith('/login'); } catch { /* non-HTTP page */ }
+    return {
+      authenticated: hasSessionCookie && !loginPromptVisible && !onLoginRoute,
+      hasSessionCookie,
+      loginPromptVisible,
+      onLoginRoute,
+    };
   }
 
   return {
