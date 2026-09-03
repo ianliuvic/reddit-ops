@@ -58,6 +58,14 @@ app.register(async (api) => {
     catch (error) { return reply.code(400).send({ error: error.message }); }
   });
   api.get('/page/snapshot', async (request) => browser.snapshot(request.query));
+  api.get('/reddit/communities/:name', async (request, reply) => {
+    try { return await browser.community(request.params.name); }
+    catch (error) { return reply.code(400).send({ error: error.message }); }
+  });
+  api.post('/reddit/communities/:name/join', async (request, reply) => {
+    try { return await browser.joinCommunity(request.params.name, request.body?.approval); }
+    catch (error) { return reply.code(400).send({ error: error.message }); }
+  });
   api.post('/page/screenshot', async (request) => {
     const result = await browser.screenshot(request.body ?? {});
     return { ...result, downloadUrl: `https://${config.publicHost}/api/captures/${result.name}` };

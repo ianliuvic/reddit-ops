@@ -16,3 +16,11 @@ export function isAllowedNavigationUrl(value) {
     || host === 'googleusercontent.com' || host.endsWith('.googleusercontent.com')
     || host === 'gstatic.com' || host.endsWith('.gstatic.com');
 }
+
+export function normalizeSubredditName(value) {
+  const name = String(value ?? '').trim().replace(/^r\//i, '');
+  if (!/^[A-Za-z0-9_]{2,21}$/.test(name)) {
+    throw new Error('Invalid subreddit name');
+  }
+  return name;
+}

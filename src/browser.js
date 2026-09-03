@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
-import { isAllowedNavigationUrl } from './security.js';
+import { isAllowedNavigationUrl, normalizeSubredditName } from './security.js';
 import { startProxyAdapter } from './proxy.js';
 
 function terminate(child, timeoutMs = 5000) {
@@ -140,6 +140,24 @@ export function createBrowserManager(config) {
     };
   }
 
+  async function communityInfo(page, requestedName) {
+    const name = normalizeSubredditName(requestedName);
+    const response = await page.request.get(`https://www.reddit.com/r/${name}/about.json?raw_json=1`);
+    const payload = await response.json().catch(() => null);
+    if (!response.ok() || !payload?.data) {
+      throw new Error(payload?.reason === 'banned' ? 'Subreddit is banned or unavailable' : 'Subreddit not found');
+    }
+    return {
+      name: payload.data.display_name,
+      prefixedName: payload.data.display_name_prefixed,
+      title: payload.data.title,
+      type: payload.data.subreddit_type,
+      subscribers: payload.data.subscribers,
+      joined: Boolean(payload.data.user_is_subscriber),
+      fullname: payload.data.name,
+    };
+  }
+
   return {
     start,
     stop,
@@ -174,6 +192,54 @@ export function createBrowserManager(config) {
       })), Math.min(Number(linkLimit) || 200, 500))).filter((item) => item.href),
       ...(await loginStatus(page)),
     })),
+    community: (name) => run(async (page) => communityInfo(page, name)),
+    joinCommunity: (requestedName, approval) => run(async (page) => {
+      const name = normalizeSubredditName(requestedName);
+      if (approval !== `JOIN r/${name}`) throw new Error(`Approval must equal JOIN r/${name}`);
+
+      const login = await loginStatus(page);
+      if (!login.authenticated) throw new Error('Reddit login is required');
+
+      const before = await communityInfo(page, name);
+      if (before.type !== 'public') throw new Error('Only public subreddits can be joined');
+      if (before.joined) return { changed: false, community: before };
+
+      await page.goto(`https://www.reddit.com/r/${name}/`, { waitUntil: 'domcontentloaded' });
+      const result = await page.evaluate(async ({ fullname, displayName }) => {
+        const meResponse = await fetch('/api/me.json', { credentials: 'include' });
+        const me = await meResponse.json();
+        const modhash = me?.data?.modhash;
+        if (!meResponse.ok || !me?.data?.name || !modhash) throw new Error('Could not authorize Reddit membership change');
+
+        const form = new URLSearchParams({
+          api_type: 'json',
+          action: 'sub',
+          sr: fullname,
+          uh: modhash,
+        });
+        const response = await fetch('/api/subscribe', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Modhash': modhash,
+          },
+          body: form.toString(),
+        });
+        const text = await response.text();
+        let payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch { /* Reddit may return an empty body */ }
+        if (!response.ok || payload?.json?.errors?.length) {
+          throw new Error(`Reddit rejected joining r/${displayName}`);
+        }
+        return { account: me.data.name };
+      }, { fullname: before.fullname, displayName: before.name });
+
+      const after = await communityInfo(page, name);
+      if (!after.joined) throw new Error(`Reddit did not confirm membership in r/${after.name}`);
+      await saveState();
+      return { changed: true, account: result.account, community: after };
+    }),
     screenshot: ({ fullPage = false } = {}) => run(async (page) => {
       const name = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID()}.png`;
       const target = path.join(capturesPath, name);
