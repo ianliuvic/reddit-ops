@@ -16,8 +16,9 @@ const config = {
   timezone: process.env.BROWSER_TIMEZONE ?? 'America/New_York',
   navigationTimeoutMs: Number(process.env.NAVIGATION_TIMEOUT_MS ?? 60000),
   display: process.env.DISPLAY ?? ':99',
-  chromePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome',
-  cdpPort: Number(process.env.CHROME_CDP_PORT ?? 9222),
+  proxyServer: process.env.PROXY_SERVER?.trim() || null,
+  proxyUsername: process.env.PROXY_USERNAME?.trim() || null,
+  proxyPassword: process.env.PROXY_PASSWORD || null,
 };
 if (!config.adminApiKey) throw new Error('ADMIN_API_KEY is required');
 if (!config.novncUsername || !config.novncPassword) throw new Error('NOVNC_USERNAME and NOVNC_PASSWORD are required');
