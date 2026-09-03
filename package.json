@@ -1,0 +1,19 @@
+{
+  "name": "reddit-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/browser.js && node --check src/security.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@fastify/http-proxy": "^11.6.1",
+    "fastify": "^5.6.1",
+    "playwright": "1.55.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
