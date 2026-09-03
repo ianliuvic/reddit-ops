@@ -208,7 +208,9 @@ export function createBrowserManager(config) {
       if (!login.authenticated) throw new Error('Reddit login is required');
 
       const before = await communityInfo(page, name);
-      if (before.type !== 'public') throw new Error('Only public subreddits can be joined');
+      if (!['public', 'restricted'].includes(before.type)) {
+        throw new Error('Only public or restricted subreddits can be joined');
+      }
       if (before.joined) return { changed: false, community: before };
 
       await page.goto(`https://www.reddit.com/r/${name}/`, { waitUntil: 'domcontentloaded' });
