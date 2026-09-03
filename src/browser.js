@@ -142,9 +142,16 @@ export function createBrowserManager(config) {
 
   async function communityInfo(page, requestedName) {
     const name = normalizeSubredditName(requestedName);
-    const response = await page.request.get(`https://www.reddit.com/r/${name}/about.json?raw_json=1`);
-    const payload = await response.json().catch(() => null);
-    if (!response.ok() || !payload?.data) {
+    let onReddit = false;
+    try { onReddit = new URL(page.url()).hostname.endsWith('reddit.com'); } catch { /* non-HTTP page */ }
+    if (!onReddit) await page.goto('https://www.reddit.com/', { waitUntil: 'domcontentloaded' });
+    const { ok, payload } = await page.evaluate(async (subreddit) => {
+      const response = await fetch(`/r/${encodeURIComponent(subreddit)}/about.json?raw_json=1`, {
+        credentials: 'include',
+      });
+      return { ok: response.ok, payload: await response.json().catch(() => null) };
+    }, name);
+    if (!ok || !payload?.data) {
       throw new Error(payload?.reason === 'banned' ? 'Subreddit is banned or unavailable' : 'Subreddit not found');
     }
     return {
